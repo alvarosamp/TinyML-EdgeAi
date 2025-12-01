@@ -137,7 +137,67 @@ static void pdm_data_handler(uint32_t n_samples){
         free(inference.buffers[0]);
         return false;
     }
-    sampleBuffer = (signed short *)malloc((n_samples >>)
+    sampleBuffer = (signed short *)malloc((n_samples >> 1) *sizeof(signed short));
+    if(sampleBuffer == NULL){
+        free(inference.buffers[0]);
+        free(inference.buffers[1]);
+        return false;
+    }
+    infrence.buf_select = 0;
+    inference.buf_count = 0;
+    inference.buf_ready = 0;
+    inference.n_samples = n_samples ;
 
+    //Configure the data receive callback
+    PDM.onReceive(&pdm_data_ready_inferece_callback);
+    PDM.setBufferSize((n_samples >> 1) * sizeof(signed short));
+    //Initialize PDm
+    // - one channel (mono mode)
+    // a 16kHz sample rate
+    if(!PDM.begin(1, EI_CLASSIFIER_FREQUENCY)){
+        ei_printf('Failed to start PDM');
+    }
+    //set the gain, defaults to 20
+    PDM.setGain(127);
+    record_ready = 1;
+    return true;
 }
+    /**
+     * @brief PDM data ready callback
+     * @return True when finished
+     */
+static bool microphone_inference_record(void){
+    bool ret = true;
+  if(inference.buf_ready == 1) {
+    ei_printf(
+      "Error sample buffer overrun. Decrease the number of slices per model window "
+      "(EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW)\n");
+      ret = false;
+  }
+  while(inference.buf_ready ==0){
+    //wait for buffer to be ready
+    delay(1);
+  }
+  infrence.buf_ready = 0;
+  return ret;
+}
+// Get raw audio signal data
+
+static int microphone_audio_signal_get_data(size_t offset, size_t lenght, float **out_ptr){
+    numpy::int16_to_float(&inference.buffers[inference.buf_select][offset], out_ptr, lenght);
+    return 0;
+}
+//@brief Stop PDM and release buffer
+static void microphone_inference_end(void){
+    PDM.end();
+    free(inference.buffers[0]);
+    free(inference.buffers[1]);
+    free(sampleBuffer);
+}
+
+// PDM data ready callback
+#if !defined(EI_CLASSIFIER_ALLOCATION_SENSOR) || EI_CLASSIFIER_SENSOR != EI_CLASSIFIER_SENSOR_MICROPHONE
+#error "Invalid model for current sensor."
+#endif
+
 
